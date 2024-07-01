@@ -73,7 +73,7 @@ class ScreenCaptureService : Service() {
     private fun sendImageData(image: Image) {
         val planes = image.planes
         val buffer = planes[0].buffer
-        val bytes = ByteArray(buffer.capacity())
+        val bytes = ByteArray(buffer.remaining()) // Correctly allocate the buffer size
         buffer.get(bytes)
 
         try {
@@ -90,8 +90,6 @@ class ScreenCaptureService : Service() {
             Log.e("ScreenCaptureService", "Error sending image data", e)
         }
     }
-
-
 
     private fun startForegroundService() {
         val notificationChannelId = "SCREEN_CAPTURE_CHANNEL"
