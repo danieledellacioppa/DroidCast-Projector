@@ -77,6 +77,7 @@ class ScreenCaptureService : Service() {
         try {
             val socket = Socket("192.168.0.159", PORT)
             val outputStream = socket.getOutputStream()
+            outputStream.write(bytes.size)
             outputStream.write(bytes)
             outputStream.flush()
             outputStream.close()
@@ -85,6 +86,7 @@ class ScreenCaptureService : Service() {
             e.printStackTrace()
         }
     }
+
 
     private fun startForegroundService() {
         val notificationChannelId = "SCREEN_CAPTURE_CHANNEL"
