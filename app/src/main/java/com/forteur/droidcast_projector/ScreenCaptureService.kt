@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.media.Image
@@ -17,6 +18,7 @@ import android.os.IBinder
 import android.util.DisplayMetrics
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.Socket
 
@@ -73,23 +75,32 @@ class ScreenCaptureService : Service() {
     private fun sendImageData(image: Image) {
         val planes = image.planes
         val buffer = planes[0].buffer
-        val bytes = ByteArray(buffer.remaining()) // Correctly allocate the buffer size
-        buffer.get(bytes)
+        val pixelStride = planes[0].pixelStride
+        val rowStride = planes[0].rowStride
+        val rowPadding = rowStride - pixelStride * image.width
+
+        val bitmap = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
+        bitmap.copyPixelsFromBuffer(buffer)
+
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream)
+        val byteArray = byteArrayOutputStream.toByteArray()
 
         try {
             val socket = Socket("192.168.0.159", PORT)
             val outputStream = DataOutputStream(socket.getOutputStream())
-            outputStream.writeInt(bytes.size)
-            outputStream.write(bytes)
+            outputStream.writeInt(byteArray.size)
+            outputStream.write(byteArray)
             outputStream.flush()
             outputStream.close()
             socket.close()
-            Log.d("ScreenCaptureService", "Sent image data of size: ${bytes.size}")
+            Log.d("ScreenCaptureService", "Sent image data of size: ${byteArray.size}")
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e("ScreenCaptureService", "Error sending image data", e)
         }
     }
+
 
     private fun startForegroundService() {
         val notificationChannelId = "SCREEN_CAPTURE_CHANNEL"
