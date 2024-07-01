@@ -36,6 +36,7 @@ class ScreenCaptureService : Service() {
         val data: Intent? = intent?.getParcelableExtra("data")
         if (data != null) {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+            mediaProjection.registerCallback(MediaProjectionCallback(), null)
             startScreenCapture()
         }
 
@@ -106,6 +107,13 @@ class ScreenCaptureService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
+    }
+
+    private inner class MediaProjectionCallback : MediaProjection.Callback() {
+        override fun onStop() {
+            // Handle cleanup if needed when the projection stops
+            stopSelf()
+        }
     }
 
     companion object {
