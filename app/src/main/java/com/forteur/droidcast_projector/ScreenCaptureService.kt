@@ -16,6 +16,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.IBinder
 import android.util.DisplayMetrics
 import androidx.core.app.NotificationCompat
+import java.io.DataOutputStream
 import java.net.Socket
 
 class ScreenCaptureService : Service() {
@@ -76,8 +77,8 @@ class ScreenCaptureService : Service() {
 
         try {
             val socket = Socket("192.168.0.159", PORT)
-            val outputStream = socket.getOutputStream()
-            outputStream.write(bytes.size)
+            val outputStream = DataOutputStream(socket.getOutputStream())
+            outputStream.writeInt(bytes.size)
             outputStream.write(bytes)
             outputStream.flush()
             outputStream.close()
