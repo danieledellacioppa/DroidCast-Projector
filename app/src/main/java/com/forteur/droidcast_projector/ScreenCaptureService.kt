@@ -15,6 +15,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.IBinder
 import android.util.DisplayMetrics
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.io.DataOutputStream
 import java.net.Socket
@@ -83,10 +84,13 @@ class ScreenCaptureService : Service() {
             outputStream.flush()
             outputStream.close()
             socket.close()
+            Log.d("ScreenCaptureService", "Sent image data of size: ${bytes.size}")
         } catch (e: Exception) {
             e.printStackTrace()
+            Log.e("ScreenCaptureService", "Error sending image data", e)
         }
     }
+
 
 
     private fun startForegroundService() {
