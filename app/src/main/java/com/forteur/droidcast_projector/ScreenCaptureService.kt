@@ -75,7 +75,7 @@ class ScreenCaptureService : Service() {
         buffer.get(bytes)
 
         try {
-            val socket = Socket("RECEIVER_IP_ADDRESS", PORT)
+            val socket = Socket("192.168.0.159", PORT)
             val outputStream = socket.getOutputStream()
             outputStream.write(bytes)
             outputStream.flush()
