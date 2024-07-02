@@ -26,6 +26,7 @@ class ScreenCaptureService : Service() {
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var imageReader: ImageReader
     private var ipAddress: String = ""
+    private var quality: Int = 50 // Default quality
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +39,7 @@ class ScreenCaptureService : Service() {
         val resultCode = intent?.getIntExtra("resultCode", Activity.RESULT_OK) ?: Activity.RESULT_OK
         val data: Intent? = intent?.getParcelableExtra("data")
         ipAddress = intent?.getStringExtra("ipAddress") ?: "" // Extract the IP address
+        quality = intent?.getIntExtra("quality", 50) ?: 50 // Extract the quality
         if (data != null) {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
             mediaProjection.registerCallback(MediaProjectionCallback(), null)
@@ -79,11 +81,17 @@ class ScreenCaptureService : Service() {
         val rowStride = planes[0].rowStride
         val rowPadding = rowStride - pixelStride * image.width
 
-        val bitmap = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
-        bitmap.copyPixelsFromBuffer(buffer)
+        val originalBitmap = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
+        originalBitmap.copyPixelsFromBuffer(buffer)
 
+        // Resize the bitmap
+        val newWidth = originalBitmap.width / 2
+        val newHeight = originalBitmap.height / 2
+        val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, false)
+
+        // Compress the bitmap to JPEG using the quality parameter
         val byteArrayOutputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream)
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, byteArrayOutputStream)
         val byteArray = byteArrayOutputStream.toByteArray()
 
         try {
@@ -135,3 +143,4 @@ class ScreenCaptureService : Service() {
         const val PORT = 12345 // Replace with your desired port number
     }
 }
+

@@ -18,11 +18,13 @@ class ScreenCaptureActivity : AppCompatActivity() {
         val resultCode = intent.getIntExtra("resultCode", Activity.RESULT_OK)
         val data: Intent? = intent.getParcelableExtra("data")
         val ipAddress = intent.getStringExtra("ipAddress") // Extract the IP address
+        val quality = intent.getIntExtra("quality", 50) // Extract the quality
         if (resultCode == Activity.RESULT_OK && data != null) {
             val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
                 putExtra("resultCode", resultCode)
                 putExtra("data", data)
                 putExtra("ipAddress", ipAddress) // Pass the IP address to the service
+                putExtra("quality", quality) // Pass the quality to the service
             }
             startForegroundService(serviceIntent)
             finish()
@@ -32,4 +34,5 @@ class ScreenCaptureActivity : AppCompatActivity() {
         }
     }
 }
+
 

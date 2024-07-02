@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
                 putExtra("data", result.data)
                 putExtra("resultCode", result.resultCode)
                 putExtra("ipAddress", ipAddress) // Pass the IP address
+                putExtra("quality", quality) // Pass the selected quality
             }
             startActivity(intent)
         } else {
@@ -37,6 +38,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private var ipAddress: String = ""
+    private var quality: Int = 50 // Default quality
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,8 +46,9 @@ class MainActivity : ComponentActivity() {
             DroidCastProjectorTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
-                        startScreenCasting = { ip ->
+                        startScreenCasting = { ip, q ->
                             ipAddress = ip
+                            quality = q
                             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                             startScreenCaptureLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
                         },
@@ -58,8 +61,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(startScreenCasting: (String) -> Unit, modifier: Modifier = Modifier) {
+fun MainScreen(startScreenCasting: (String, Int) -> Unit, modifier: Modifier = Modifier) {
     var ipAddress by remember { mutableStateOf("") }
+    var quality by remember { mutableStateOf(50) }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -75,7 +79,15 @@ fun MainScreen(startScreenCasting: (String) -> Unit, modifier: Modifier = Modifi
             singleLine = true
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { startScreenCasting(ipAddress) }) {
+        Text(text = "Select Quality")
+        Slider(
+            value = quality.toFloat(),
+            onValueChange = { quality = it.toInt() },
+            valueRange = 1f..100f,
+            steps = 98
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { startScreenCasting(ipAddress, quality) }) {
             Text(text = "Start Screen Casting")
         }
     }
@@ -85,6 +97,6 @@ fun MainScreen(startScreenCasting: (String) -> Unit, modifier: Modifier = Modifi
 @Composable
 fun MainScreenPreview() {
     DroidCastProjectorTheme {
-        MainScreen(startScreenCasting = {})
+        MainScreen(startScreenCasting = { _, _ -> })
     }
 }
