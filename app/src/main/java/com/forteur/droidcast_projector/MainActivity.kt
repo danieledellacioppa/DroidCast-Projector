@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
             val intent = Intent(this, ScreenCaptureActivity::class.java).apply {
                 putExtra("data", result.data)
                 putExtra("resultCode", result.resultCode)
+                putExtra("ipAddress", ipAddress) // Pass the IP address
             }
             startActivity(intent)
         } else {
@@ -35,13 +36,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var ipAddress: String = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             DroidCastProjectorTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
-                        startScreenCasting = {
+                        startScreenCasting = { ip ->
+                            ipAddress = ip
                             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                             startScreenCaptureLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
                         },
@@ -54,7 +58,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(startScreenCasting: () -> Unit, modifier: Modifier = Modifier) {
+fun MainScreen(startScreenCasting: (String) -> Unit, modifier: Modifier = Modifier) {
+    var ipAddress by remember { mutableStateOf("") }
+
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -62,7 +68,14 @@ fun MainScreen(startScreenCasting: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Text(text = "Screen Casting App")
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = startScreenCasting) {
+        TextField(
+            value = ipAddress,
+            onValueChange = { ipAddress = it },
+            label = { Text(text = "Enter Receiver IP Address") },
+            singleLine = true
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = { startScreenCasting(ipAddress) }) {
             Text(text = "Start Screen Casting")
         }
     }

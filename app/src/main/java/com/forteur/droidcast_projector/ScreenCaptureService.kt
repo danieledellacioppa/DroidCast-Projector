@@ -1,13 +1,11 @@
 package com.forteur.droidcast_projector
 
-import android.app.Activity
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
+
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.media.Image
@@ -27,6 +25,7 @@ class ScreenCaptureService : Service() {
     private lateinit var mediaProjection: MediaProjection
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var imageReader: ImageReader
+    private var ipAddress: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +37,7 @@ class ScreenCaptureService : Service() {
 
         val resultCode = intent?.getIntExtra("resultCode", Activity.RESULT_OK) ?: Activity.RESULT_OK
         val data: Intent? = intent?.getParcelableExtra("data")
+        ipAddress = intent?.getStringExtra("ipAddress") ?: "" // Extract the IP address
         if (data != null) {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
             mediaProjection.registerCallback(MediaProjectionCallback(), null)
@@ -87,7 +87,7 @@ class ScreenCaptureService : Service() {
         val byteArray = byteArrayOutputStream.toByteArray()
 
         try {
-            val socket = Socket("192.168.0.159", PORT)
+            val socket = Socket(ipAddress, PORT) // Use the IP address from the intent
             val outputStream = DataOutputStream(socket.getOutputStream())
             outputStream.writeInt(byteArray.size)
             outputStream.write(byteArray)
@@ -100,7 +100,6 @@ class ScreenCaptureService : Service() {
             Log.e("ScreenCaptureService", "Error sending image data", e)
         }
     }
-
 
     private fun startForegroundService() {
         val notificationChannelId = "SCREEN_CAPTURE_CHANNEL"
