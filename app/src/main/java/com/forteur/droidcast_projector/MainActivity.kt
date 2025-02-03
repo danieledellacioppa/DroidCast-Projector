@@ -92,8 +92,16 @@ class MainActivity : ComponentActivity() {
         val result: IntentResult? = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
         if (result != null) {
             if (result.contents != null) {
-                // Aggiorna lo stato con l'IP estratto dal codice QR
-                ipAddressState.value = result.contents
+                val scannedResult = result.contents
+                // Supponendo che il formato sia sempre "http://<INDIRIZZO-IP>:8080"
+                val ip = if (scannedResult.startsWith("http://") && scannedResult.contains(":")) {
+                    scannedResult.removePrefix("http://").substringBefore(":")
+                } else {
+                    // In caso il formato non corrisponda, usiamo il risultato così com'è
+                    scannedResult
+                }
+                // Aggiorna lo stato con il solo indirizzo IP
+                ipAddressState.value = ip
             } else {
                 // La scansione è stata annullata
             }
