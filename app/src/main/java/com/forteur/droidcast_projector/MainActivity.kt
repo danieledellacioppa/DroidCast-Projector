@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
@@ -21,14 +22,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.forteur.droidcast_projector.ui.theme.DroidCastProjectorTheme
+import com.google.zxing.integration.android.IntentIntegrator
+import com.google.zxing.integration.android.IntentResult
 
 class MainActivity : ComponentActivity() {
-    private val startScreenCaptureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+
+    // Stato condiviso per l'indirizzo IP, utile sia per l'input manuale che per il risultato della scansione QR
+    private val ipAddressState = mutableStateOf("")
+    private var quality: Int = 50 // Default quality
+
+    private val startScreenCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val intent = Intent(this, ScreenCaptureActivity::class.java).apply {
                 putExtra("data", result.data)
                 putExtra("resultCode", result.resultCode)
-                putExtra("ipAddress", ipAddress) // Pass the IP address
+                putExtra("ipAddress", ipAddressState.value) // Pass the IP address
                 putExtra("quality", quality) // Pass the selected quality
             }
             startActivity(intent)
@@ -37,8 +47,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private var ipAddress: String = ""
-    private var quality: Int = 50 // Default quality
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,8 +55,11 @@ class MainActivity : ComponentActivity() {
             DroidCastProjectorTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
+                        ipAddress = ipAddressState.value,
+                        onIpAddressChange = { nuovoIp -> ipAddressState.value = nuovoIp },
+                        onScanQrCode = { scanQrCode() },
                         startScreenCasting = { ip, q ->
-                            ipAddress = ip
+                            ipAddressState.value = ip
                             quality = q
                             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                             startScreenCaptureLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
@@ -58,15 +70,54 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * Avvia l'attività di scansione QR utilizzando ZXing.
+     */
+    private fun scanQrCode() {
+        val integrator = IntentIntegrator(this)
+        integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE) // Scansiona solo codici QR
+        integrator.setPrompt("Scansiona il codice QR")
+        integrator.setBeepEnabled(true)
+        integrator.setOrientationLocked(true)
+        integrator.initiateScan()
+    }
+
+    /**
+     * Gestisce il risultato della scansione QR.
+     * Il metodo IntentIntegrator.parseActivityResult() interpreta i dati restituiti dalla scansione.
+     */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        // Prova a interpretare il risultato della scansione QR
+        val result: IntentResult? = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (result != null) {
+            if (result.contents != null) {
+                // Aggiorna lo stato con l'IP estratto dal codice QR
+                ipAddressState.value = result.contents
+            } else {
+                // La scansione è stata annullata
+            }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
 }
 
 @Composable
-fun MainScreen(startScreenCasting: (String, Int) -> Unit, modifier: Modifier = Modifier) {
-    var ipAddress by remember { mutableStateOf("") }
+fun MainScreen(
+    ipAddress: String,
+    onIpAddressChange: (String) -> Unit,
+    onScanQrCode: () -> Unit,
+    startScreenCasting: (String, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+//    var ipAddress by remember { mutableStateOf("") }
     var quality by remember { mutableStateOf(50) }
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -74,10 +125,15 @@ fun MainScreen(startScreenCasting: (String, Int) -> Unit, modifier: Modifier = M
         Spacer(modifier = Modifier.height(16.dp))
         TextField(
             value = ipAddress,
-            onValueChange = { ipAddress = it },
+            onValueChange = onIpAddressChange,
             label = { Text(text = "Enter Receiver IP Address") },
-            singleLine = true
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
         )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onScanQrCode) {
+            Text(text = "Scansiona codice QR")
+        }
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Select Quality")
         Slider(
@@ -90,13 +146,5 @@ fun MainScreen(startScreenCasting: (String, Int) -> Unit, modifier: Modifier = M
         Button(onClick = { startScreenCasting(ipAddress, quality) }) {
             Text(text = "Start Screen Casting")
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun MainScreenPreview() {
-    DroidCastProjectorTheme {
-        MainScreen(startScreenCasting = { _, _ -> })
     }
 }
