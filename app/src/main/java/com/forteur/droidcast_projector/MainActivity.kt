@@ -134,7 +134,7 @@ fun MainScreen(
         TextField(
             value = ipAddress,
             onValueChange = onIpAddressChange,
-            label = { Text(text = "Enter Receiver IP Address") },
+            label = { Text(text = "Enter The Receiver IP Address") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )

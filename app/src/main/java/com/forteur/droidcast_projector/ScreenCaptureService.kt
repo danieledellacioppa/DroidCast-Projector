@@ -75,6 +75,9 @@ class ScreenCaptureService : Service() {
     }
 
     private fun sendImageData(image: Image) {
+        // Rileva l'orientamento corrente dal sistema
+        val orientationFlag = if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 1 else 0
+
         val planes = image.planes
         val buffer = planes[0].buffer
         val pixelStride = planes[0].pixelStride
@@ -97,6 +100,8 @@ class ScreenCaptureService : Service() {
         try {
             val socket = Socket(ipAddress, PORT) // Use the IP address from the intent
             val outputStream = DataOutputStream(socket.getOutputStream())
+            // Invia prima il flag dell'orientamento...
+            outputStream.writeInt(orientationFlag)
             outputStream.writeInt(byteArray.size)
             outputStream.write(byteArray)
             outputStream.flush()
