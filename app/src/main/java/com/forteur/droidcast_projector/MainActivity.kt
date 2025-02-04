@@ -134,13 +134,13 @@ fun MainScreen(
         TextField(
             value = ipAddress,
             onValueChange = onIpAddressChange,
-            label = { Text(text = "Enter The Receiver IP Address") },
+            label = { Text(text = "Enter Receiver IP Address or Scan QR Code") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onScanQrCode) {
-            Text(text = "Scansiona codice QR")
+            Text(text = "Scan QR Code")
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Select Quality")

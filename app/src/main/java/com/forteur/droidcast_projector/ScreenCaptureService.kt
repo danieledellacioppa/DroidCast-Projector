@@ -1,11 +1,14 @@
 package com.forteur.droidcast_projector
 
 
-import android.app.*
+import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.ImageFormat
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.media.Image
@@ -40,6 +43,7 @@ class ScreenCaptureService : Service() {
         val data: Intent? = intent?.getParcelableExtra("data")
         ipAddress = intent?.getStringExtra("ipAddress") ?: "" // Extract the IP address
         quality = intent?.getIntExtra("quality", 50) ?: 50 // Extract the quality
+//        quality = 100 // Set the quality to 100 for testing purposes
         if (data != null) {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
             mediaProjection.registerCallback(MediaProjectionCallback(), null)
@@ -88,13 +92,16 @@ class ScreenCaptureService : Service() {
         originalBitmap.copyPixelsFromBuffer(buffer)
 
         // Resize the bitmap
-        val newWidth = originalBitmap.width / 2
-        val newHeight = originalBitmap.height / 2
-        val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, false)
+//        val newWidth = originalBitmap.width / 2
+//        val newHeight = originalBitmap.height / 2
+//        val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, false)
 
-        // Compress the bitmap to JPEG using the quality parameter
+        val bitmapToSend = originalBitmap
+
+        // Compress the bitmap to PNG
         val byteArrayOutputStream = ByteArrayOutputStream()
-        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, byteArrayOutputStream)
+        bitmapToSend.compress(Bitmap.CompressFormat.PNG, quality, byteArrayOutputStream)
+//        Log.d("ScreenCaptureService", "Quality: $quality")
         val byteArray = byteArrayOutputStream.toByteArray()
 
         try {
