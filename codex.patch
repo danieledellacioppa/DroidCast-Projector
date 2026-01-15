@@ -1,0 +1,466 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/windows_equivalent/README.md b/windows_equivalent/README.md
+index 1fd272f416e41d2c489442430cd508f2b275ef14..8b59201c3459c7213e9759fae77450e246cc003c 100644
+--- a/windows_equivalent/README.md
++++ b/windows_equivalent/README.md
+@@ -1,35 +1,74 @@
+ # Windows Equivalent Sender
+ 
+ This folder contains a Python implementation of the Windows sender that matches the Android sender protocol exactly (one TCP connection per frame, PNG payload, and the same field ordering).
+ 
+ ## Requirements
+ 
+ - Windows
+ - Python 3.9+
+ 
+ Install dependencies:
+ 
+ ```bash
+ pip install -r requirements.txt
+ ```
+ 
+-## Usage
++## Usage (CLI)
+ 
+ ```bash
+ python -m sender.main --receiver-ip 192.168.0.10 --quality 50
+ ```
+ 
+ ### Parameters
+ 
+ - `--receiver-ip` (required): IP address of the Android receiver.
+ - `--quality` (optional): 1–100, default 50. This is accepted to match the Android sender (PNG encoding is lossless; the quality parameter is retained for protocol parity).
+ 
++## Usage (GUI)
++
++```bash
++python -m sender.gui
++```
++
++### GUI Features
++
++- Enter Receiver IP and Quality (1–100).
++- Start/Stop casting controls.
++- Test connection button.
++- Scrollable log area with the same messages as the CLI.
++- Running/Stopped status indicator.
++- Saves the last used IP/quality to `~/.droidcast_sender_config.json`.
++
+ ## Behavior
+ 
+ - Captures the full screen continuously.
+ - Encodes each frame as PNG.
+ - For every frame, opens a new TCP connection to port `12345` and sends:
+   1. `orientationFlag` (int32, big-endian)
+   2. `imageSize` (int32, big-endian)
+   3. `imageBytes` (PNG payload)
+ - Logs the destination IP, PNG size, orientation flag, and socket errors.
++
++## Build (cx_Freeze)
++
++1. Install build dependency:
++
++   ```bash
++   pip install cx_Freeze
++   ```
++
++2. Build the windowed executable:
++
++   ```bash
++   python setup_cxfreeze.py build
++   ```
++
++   The output goes to `build/exe.win-amd64-<python_version>/DroidCastSender.exe`.
++
++## Installer (Inno Setup)
++
++1. Build the exe with cx_Freeze.
++2. Open `installer/inno_setup.iss` in Inno Setup Compiler.
++3. Compile to generate the installer executable in `installer/output/`.
++
++The script creates Start Menu and Desktop shortcuts and can run the app after install.
+
+diff --git a/windows_equivalent/installer/inno_setup.iss b/windows_equivalent/installer/inno_setup.iss
+new file mode 100644
+index 0000000000000000000000000000000000000000..471f077a3bd0f1a1e8cac91092fe71e127a440cf
+--- /dev/null
++++ b/windows_equivalent/installer/inno_setup.iss
+@@ -0,0 +1,27 @@
++#define AppName "DroidCast Windows Sender"
++#define AppVersion "0.1.0"
++#define AppPublisher "DroidCast"
++#define AppExeName "DroidCastSender.exe"
++
++[Setup]
++AppId={{E6E10D5D-5FE4-4A2B-9D82-7E8B7AFA6F23}
++AppName={#AppName}
++AppVersion={#AppVersion}
++AppPublisher={#AppPublisher}
++DefaultDirName={pf}\DroidCastWindowsSender
++DefaultGroupName={#AppName}
++OutputDir=output
++OutputBaseFilename=droidcast_sender_setup
++Compression=lzma
++SolidCompression=yes
++SetupIconFile=..\assets\app.ico
++
++[Files]
++Source: "..\build\exe.win-amd64-3.11\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
++
++[Icons]
++Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
++Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"
++
++[Run]
++Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+diff --git a/windows_equivalent/sender/app_controller.py b/windows_equivalent/sender/app_controller.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a5c809b6c4fbcad5780c62c2ff79bf84ff506ac
+--- /dev/null
++++ b/windows_equivalent/sender/app_controller.py
+@@ -0,0 +1,79 @@
++import socket
++import threading
++from typing import Callable, Optional
++
++from sender.capture.screen import ScreenCapturer
++from sender.config import DEFAULT_PORT, MAX_QUALITY, MIN_QUALITY
++from sender.encode.png import encode_png
++from sender.protocol.frame_packet import build_frame_packet
++from sender.transport.tcp_sender import TcpSender
++
++
++class AppController:
++    def __init__(self, logger: Callable[[str], None], fps: float = 10.0) -> None:
++        self._logger = logger
++        self._delay = 1.0 / fps if fps > 0 else 0.1
++        self._stop_event = threading.Event()
++        self._thread: Optional[threading.Thread] = None
++
++    def is_running(self) -> bool:
++        return self._thread is not None and self._thread.is_alive()
++
++    def start(self, receiver_ip: str, quality: int) -> None:
++        if self.is_running():
++            self._logger("Worker already running.")
++            return
++        if quality < MIN_QUALITY or quality > MAX_QUALITY:
++            raise ValueError("Quality must be between 1 and 100")
++        self._stop_event = threading.Event()
++        self._thread = threading.Thread(
++            target=self._worker,
++            args=(receiver_ip, quality, self._stop_event),
++            daemon=True,
++        )
++        self._thread.start()
++
++    def stop(self, timeout: float = 2.0) -> None:
++        if not self.is_running():
++            return
++        self._stop_event.set()
++        if self._thread:
++            self._thread.join(timeout=timeout)
++        if self._thread and self._thread.is_alive():
++            self._logger("Worker did not stop within timeout.")
++
++    def test_connection(self, receiver_ip: str, timeout: float = 1.5) -> None:
++        try:
++            with socket.create_connection((receiver_ip, DEFAULT_PORT), timeout=timeout):
++                self._logger("Connection test: success.")
++        except OSError as exc:
++            self._logger(f"Connection test failed: {exc}")
++
++    def _worker(self, receiver_ip: str, quality: int, stop_event: threading.Event) -> None:
++        capturer = ScreenCapturer()
++        sender = TcpSender(receiver_ip, DEFAULT_PORT, self._logger)
++        while not stop_event.is_set():
++            try:
++                frame = capturer.capture()
++            except Exception as exc:  # pragma: no cover - defensive
++                self._logger(f"Capture error: {exc}")
++                if stop_event.wait(self._delay):
++                    break
++                continue
++
++            try:
++                png_bytes = encode_png(frame.image, quality)
++            except Exception as exc:  # pragma: no cover - defensive
++                self._logger(f"Encode error: {exc}")
++                if stop_event.wait(self._delay):
++                    break
++                continue
++
++            self._logger(f"Receiver IP: {receiver_ip}")
++            self._logger(f"PNG size: {len(png_bytes)} bytes")
++            self._logger(f"orientationFlag: {frame.orientation_flag}")
++            packet = build_frame_packet(frame.orientation_flag, png_bytes)
++            sender.send(packet)
++            if stop_event.wait(self._delay):
++                break
++        self._logger("Worker stopped.")
+diff --git a/windows_equivalent/sender/gui.py b/windows_equivalent/sender/gui.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9923e3634437edb1223520da59de11711b2efd8a
+--- /dev/null
++++ b/windows_equivalent/sender/gui.py
+@@ -0,0 +1,162 @@
++import queue
++import tkinter as tk
++from typing import Union
++from tkinter import messagebox, ttk
++
++from sender.app_controller import AppController
++from sender.config import DEFAULT_QUALITY, MAX_QUALITY, MIN_QUALITY
++from sender.user_settings import UserSettings, load_settings, save_settings
++
++
++class SenderGUI:
++    def __init__(self, root: tk.Tk) -> None:
++        self._root = root
++        self._root.title("DroidCast Windows Sender")
++        self._root.geometry("520x420")
++        self._log_queue: queue.Queue[str] = queue.Queue()
++        self._controller = AppController(self._enqueue_log)
++        self._settings = load_settings()
++
++        self._build_ui()
++        self._apply_settings()
++        self._schedule_log_pump()
++        self._root.protocol("WM_DELETE_WINDOW", self._on_close)
++
++    def _build_ui(self) -> None:
++        main_frame = ttk.Frame(self._root, padding=12)
++        main_frame.pack(fill=tk.BOTH, expand=True)
++
++        form_frame = ttk.Frame(main_frame)
++        form_frame.pack(fill=tk.X)
++
++        ttk.Label(form_frame, text="Receiver IP:").grid(row=0, column=0, sticky=tk.W)
++        self._ip_var = tk.StringVar()
++        self._ip_entry = ttk.Entry(form_frame, textvariable=self._ip_var, width=30)
++        self._ip_entry.grid(row=0, column=1, sticky=tk.W, padx=8)
++
++        ttk.Label(form_frame, text="Quality (1-100):").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
++        self._quality_var = tk.StringVar(value=str(DEFAULT_QUALITY))
++        self._quality_entry = ttk.Entry(form_frame, textvariable=self._quality_var, width=10)
++        self._quality_entry.grid(row=1, column=1, sticky=tk.W, padx=8, pady=(8, 0))
++
++        button_frame = ttk.Frame(main_frame)
++        button_frame.pack(fill=tk.X, pady=10)
++
++        self._start_button = ttk.Button(button_frame, text="Start Casting", command=self._on_start)
++        self._start_button.grid(row=0, column=0, padx=(0, 8))
++
++        self._stop_button = ttk.Button(button_frame, text="Stop Casting", command=self._on_stop)
++        self._stop_button.grid(row=0, column=1, padx=(0, 8))
++
++        self._test_button = ttk.Button(button_frame, text="Test Connection", command=self._on_test)
++        self._test_button.grid(row=0, column=2)
++
++        status_frame = ttk.Frame(main_frame)
++        status_frame.pack(fill=tk.X, pady=(0, 10))
++        ttk.Label(status_frame, text="Status:").pack(side=tk.LEFT)
++        self._status_var = tk.StringVar(value="Stopped")
++        self._status_label = ttk.Label(status_frame, textvariable=self._status_var, foreground="red")
++        self._status_label.pack(side=tk.LEFT, padx=6)
++
++        log_frame = ttk.LabelFrame(main_frame, text="Log")
++        log_frame.pack(fill=tk.BOTH, expand=True)
++
++        self._log_text = tk.Text(log_frame, height=10, state=tk.DISABLED, wrap=tk.WORD)
++        self._log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
++        scrollbar = ttk.Scrollbar(log_frame, command=self._log_text.yview)
++        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
++        self._log_text["yscrollcommand"] = scrollbar.set
++
++        self._set_running(False)
++
++    def _apply_settings(self) -> None:
++        if self._settings.receiver_ip:
++            self._ip_var.set(self._settings.receiver_ip)
++        self._quality_var.set(str(self._settings.quality))
++
++    def _schedule_log_pump(self) -> None:
++        self._root.after(100, self._pump_logs)
++
++    def _enqueue_log(self, message: str) -> None:
++        self._log_queue.put(message)
++
++    def _pump_logs(self) -> None:
++        while not self._log_queue.empty():
++            message = self._log_queue.get_nowait()
++            self._append_log(message)
++        self._schedule_log_pump()
++
++    def _append_log(self, message: str) -> None:
++        self._log_text.configure(state=tk.NORMAL)
++        self._log_text.insert(tk.END, message + "\n")
++        self._log_text.configure(state=tk.DISABLED)
++        self._log_text.see(tk.END)
++
++    def _set_running(self, running: bool) -> None:
++        if running:
++            self._status_var.set("Running")
++            self._status_label.configure(foreground="green")
++        else:
++            self._status_var.set("Stopped")
++            self._status_label.configure(foreground="red")
++        state = tk.DISABLED if running else tk.NORMAL
++        self._ip_entry.configure(state=state)
++        self._quality_entry.configure(state=state)
++        self._start_button.configure(state=tk.DISABLED if running else tk.NORMAL)
++        self._stop_button.configure(state=tk.NORMAL if running else tk.DISABLED)
++
++    def _on_start(self) -> None:
++        receiver_ip = self._ip_var.get().strip()
++        if not receiver_ip:
++            messagebox.showerror("Validation", "Receiver IP is required.")
++            return
++        try:
++            quality = int(self._quality_var.get().strip())
++        except ValueError:
++            messagebox.showerror("Validation", "Quality must be a number between 1 and 100.")
++            return
++        if quality < MIN_QUALITY or quality > MAX_QUALITY:
++            messagebox.showerror("Validation", "Quality must be between 1 and 100.")
++            return
++        try:
++            self._controller.start(receiver_ip, quality)
++        except ValueError as exc:
++            messagebox.showerror("Validation", str(exc))
++            return
++        self._set_running(True)
++        self._save_settings(receiver_ip, quality)
++
++    def _on_stop(self) -> None:
++        self._controller.stop()
++        self._set_running(False)
++
++    def _on_test(self) -> None:
++        receiver_ip = self._ip_var.get().strip()
++        if not receiver_ip:
++            messagebox.showerror("Validation", "Receiver IP is required.")
++            return
++        self._controller.test_connection(receiver_ip)
++
++    def _on_close(self) -> None:
++        if self._controller.is_running():
++            self._controller.stop()
++        self._save_settings(self._ip_var.get().strip(), self._quality_var.get().strip())
++        self._root.destroy()
++
++    def _save_settings(self, receiver_ip: str, quality_value: Union[str, int]) -> None:
++        try:
++            quality = int(quality_value)
++        except (TypeError, ValueError):
++            quality = DEFAULT_QUALITY
++        settings = UserSettings(receiver_ip=receiver_ip, quality=quality)
++        save_settings(settings)
++
++
++def main() -> None:
++    root = tk.Tk()
++    SenderGUI(root)
++    root.mainloop()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/windows_equivalent/sender/user_settings.py b/windows_equivalent/sender/user_settings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3353499ba7619c05b52f419c5cb7567078676122
+--- /dev/null
++++ b/windows_equivalent/sender/user_settings.py
+@@ -0,0 +1,52 @@
++import json
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Dict
++
++from sender.config import DEFAULT_QUALITY, MAX_QUALITY, MIN_QUALITY
++
++
++CONFIG_FILENAME = ".droidcast_sender_config.json"
++
++
++@dataclass
++class UserSettings:
++    receiver_ip: str = ""
++    quality: int = DEFAULT_QUALITY
++
++
++def settings_path() -> Path:
++    return Path.home() / CONFIG_FILENAME
++
++
++def load_settings() -> UserSettings:
++    path = settings_path()
++    if not path.exists():
++        return UserSettings()
++    try:
++        payload: Dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
++    except (OSError, json.JSONDecodeError):
++        return UserSettings()
++
++    receiver_ip = str(payload.get("receiver_ip", ""))
++    quality = payload.get("quality", DEFAULT_QUALITY)
++    if not isinstance(quality, int):
++        try:
++            quality = int(quality)
++        except (TypeError, ValueError):
++            quality = DEFAULT_QUALITY
++    if quality < MIN_QUALITY or quality > MAX_QUALITY:
++        quality = DEFAULT_QUALITY
++    return UserSettings(receiver_ip=receiver_ip, quality=quality)
++
++
++def save_settings(settings: UserSettings) -> None:
++    path = settings_path()
++    data = {
++        "receiver_ip": settings.receiver_ip,
++        "quality": settings.quality,
++    }
++    try:
++        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
++    except OSError:
++        return
+diff --git a/windows_equivalent/setup_cxfreeze.py b/windows_equivalent/setup_cxfreeze.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04ad125b0f5223be9e63bc61a00acbd019da6f42
+--- /dev/null
++++ b/windows_equivalent/setup_cxfreeze.py
+@@ -0,0 +1,31 @@
++import sys
++from pathlib import Path
++
++from cx_Freeze import Executable, setup
++
++base = "Win32GUI" if sys.platform == "win32" else None
++
++assets_dir = Path(__file__).parent / "assets"
++icon_path = assets_dir / "app.ico"
++
++build_exe_options = {
++    "packages": ["mss", "PIL"],
++    "include_files": [(str(icon_path), "assets/app.ico")],
++}
++
++executables = [
++    Executable(
++        script="sender/gui.py",
++        base=base,
++        target_name="DroidCastSender.exe",
++        icon=str(icon_path),
++    )
++]
++
++setup(
++    name="DroidCast Windows Sender",
++    version="0.1.0",
++    description="DroidCast Windows GUI Sender",
++    options={"build_exe": build_exe_options},
++    executables=executables,
++)
+ 
+EOF
+)
