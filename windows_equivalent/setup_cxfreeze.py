@@ -3,7 +3,7 @@ from pathlib import Path
 
 from cx_Freeze import Executable, setup
 
-base = "Win32GUI" if sys.platform == "win32" else None
+base = "gui" if sys.platform == "win32" else None
 
 assets_dir = Path(__file__).parent / "assets"
 icon_path = assets_dir / "app.ico"
